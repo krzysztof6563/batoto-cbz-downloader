@@ -6,6 +6,8 @@ downloader.php URLs [options]
 
 # Options
 --keep-files - keeps downloaded files
+
 --no-convert - doesn't create .cbz archive
+
 --till-last-chapter - keeps downloading until the last chapter of series
 
