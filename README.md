@@ -1,4 +1,4 @@
-# batoto-downloader
+# batoto-cbz-downloader
 A small program to download chapter of manga from bato.to and convert it to .cbz.
 
 Usage: 
