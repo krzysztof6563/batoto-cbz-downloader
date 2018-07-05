@@ -1,10 +1,10 @@
 <?php
  /*
  * Author: Krzysztof Michalski
- * Github URL: https://github.com/krzysztof6563/
+ * Gitlab URL: https://gitlab.com/krzysztof6563/
  *
  * An application that downloads chapters of manga from bato.to.
- * It has an ability to download till the end of current series
+ * It has an ability to download untill the end of current series.
  *
  * Distribted under GNU GENERAL PUBLIC LICENSE v3 (See LICENSE file)
  *
@@ -20,6 +20,11 @@
 
 function consoleLog($message) {
   echo $message."\n";
+}
+
+function stop() {
+  consoleLog("Stopping the script");
+  die();
 }
 
 function setDeafults(&$options) {
@@ -53,7 +58,7 @@ function setupProgram(&$options, &$downloadQueue) {
           break;
         default:
           consoleLog("Unknown option: $argv[$i]");
-          die();
+          stop();
       }
     } else {
       array_push($downloadQueue, $argv[$i]);
@@ -63,7 +68,7 @@ function setupProgram(&$options, &$downloadQueue) {
 
 //Sets up CURL for downloading webpage
 function setupCURL(&$ch) {
-  curl_setopt($ch, CURLOPT_TIMEOUT, 20);
+  curl_setopt($ch, CURLOPT_TIMEOUT, 60);
   curl_setopt($ch, CURLOPT_HEADER, 0);
   curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, 0);
   curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 0);
@@ -75,34 +80,45 @@ function setupCURL(&$ch) {
 function getData(&$html, &$json, &$dirName) {
   //Getting images
   consoleLog("Getting JSON data...");
-  $posStart = strpos($html, "var images = ");
-  $posEnd = strpos($html, "};", $posStart);
-  $json = substr($html, $posStart+13, $posEnd-$posStart-12);
+  $matches = [];
+  $result = preg_match('/var images = [\w\d\s{}":\/\-\.,]{0,}/', $html, $matches);
+  if ($result == FALSE || $result == 0) {
+    consoleLog("Could not find JSON data for images");
+    stop();
+  }
+  $json = substr($matches[0], strpos($matches[0], "{"));
 
   //Getting title
   consoleLog("Getting name of chapter...");
-  $posNameStart = strpos($html, 'selected="true"');
-  $posNameEnd = strpos($html, "<", $posNameStart);
-  $dirName = substr($html, $posNameStart+16, $posNameEnd-$posNameStart-16);
+  $result = preg_match('/selected="true">[^<\/]{0,}/', $html, $matches);
+  if ($result == FALSE || $result == 0) {
+    consoleLog("Could not find name of chapter in HTML.");
+    stop();
+  }
+  $dirName = substr($matches[0], strpos($matches[0], ">")+1);
 }
 
 //Downloads image, creates filename
 function downloadImage(&$key, &$dirName, &$count, &$imageCount) {
   consoleLog("Downloading file ".($count+1)."/".$imageCount);
+  //trimming $key
   $key = trim($key);
+  //creating name
   $saveTo = sprintf("%03d.jpg", $count);
+  //opening file
   $fp = fopen($dirName."/".$saveTo, 'w+');
   if($fp === false){
     throw new Exception('Could not open: ' . $dirName."/".$saveTo);
-    die();
+    stop();
   }
+  //donwloading image to file
   $ch = curl_init($key);
   curl_setopt($ch, CURLOPT_FILE, $fp);
   curl_setopt($ch, CURLOPT_TIMEOUT, 600);
   curl_exec($ch);
   if(curl_errno($ch)){
     throw new Exception(curl_error($ch));
-    die();
+    stop();
   }
   curl_close($ch);
   $count++;
@@ -112,7 +128,11 @@ function downloadImage(&$key, &$dirName, &$count, &$imageCount) {
 function convertToCBZ($dirName) {
   consoleLog("Creating archive...");
   $zip = new ZipArchive();
-  $zip->open($dirName.".cbz", ZipArchive::CREATE | ZipArchive::OVERWRITE);
+  $result = $zip->open($dirName.".cbz", ZipArchive::CREATE | ZipArchive::OVERWRITE);
+  if ($result !== true) {
+    consoleLog("Can not open zip file: $result");
+    stop();
+  }
   $zip->addEmptyDir($dirName);
   //Getting files to add
   $fileTable = scandir($dirName);
@@ -150,18 +170,34 @@ function getUniqueId($chapterId) {
 }
 
 //Checks if given URL is linking to series or chapter
-function checkURL(&$url) {
+function checkURLForSeries(&$url) {
   if (strpos($url, "/series/")) {
     return true;
   }
   return false;
 }
 
+function isBatotoURL(&$url) {
+  $res = preg_match('/bato.to\//', $url);
+  if ($res === 1) {
+    return true;
+  } else {
+    return false;
+  }
+}
+
 //Downloads webpage to $html
 function downloadWebpage($url) {
+  //Checking of given URL is bato.to URL
+  if (!isBatotoURL($url)) {
+    consoleLog("Given URL is not linking to bato.to service.");
+    stop();
+  }
+  //setting up CURL to download webpage
   $ch = curl_init($url);
   setupCURL($ch);
   consoleLog("Downloading webpage $url");
+  //exexuting CURL
   $html = curl_exec($ch);
   if(curl_errno($ch)){
       throw new Exception(curl_error($ch));
@@ -185,12 +221,13 @@ function getFirstChapterURL($html) {
   return getChapterURL($id);
 }
 
+//Downloads chapter at given URL
 function downloadChapter($url, &$options) {
   //Downloaing page
-  $isSeries = checkURL($url);
   $json = $dirName = $html = "";
   $html = downloadWebpage($url);
-  if ($isSeries) {
+  //if given URL is a link to series, then extract first chapter webpage
+  if (checkURLForSeries($url)) {
     consoleLog("Given URL is a link to series page, downloading first chapter instead.");
     $url = getFirstChapterURL($html);
     $html = downloadWebpage($url);
@@ -207,7 +244,10 @@ function downloadChapter($url, &$options) {
     $imageCount = count($file);
     //Create directory
     if (!is_dir($dirName)) {
-      mkdir($dirName);
+      if(!mkdir($dirName)){
+        consoleLog("Can not create directory: $dirName");
+        stop();
+      }
     }
     if (!$options["skipDownload"]) {
       //Loop for downloading images
@@ -233,7 +273,7 @@ function downloadChapter($url, &$options) {
       if (strpos($chapterLine, "= null") === false) {
         downloadChapter(getChapterURL(getUniqueId($chapterLine)), $options);
       } else {
-        consoleLog("Reached last chapter, stopping program.");
+        consoleLog("Reached last chapter, stopping the script.");
       }
     }
   }
