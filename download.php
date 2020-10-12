@@ -66,31 +66,21 @@ function setupProgram(&$options, &$downloadQueue) {
   }
 }
 
-//Sets up CURL for downloading webpage
-function setupCURL(&$ch) {
-  curl_setopt($ch, CURLOPT_TIMEOUT, 60);
-  curl_setopt($ch, CURLOPT_HEADER, 0);
-  curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, 0);
-  curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 0);
-  curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
-  curl_setopt($ch, CURLOPT_USERAGENT, "Mozilla/5.0 (Windows; U; Windows NT 5.1; en-US; rv:1.8.1.1) Gecko/20061204 Firefox/2.0.0.1");
-}
-
 //Extracts data (iamges, title) from HTML
 function getData(&$html, &$json, &$dirName) {
   //Getting images
   consoleLog("Getting JSON data...");
   $matches = [];
-  $result = preg_match('/var images = [\w\d\s{}":\/\-\.,]{0,}/', $html, $matches);
+  $result = preg_match('/images = [\w\d\s{}\[\]":\/\-\.,]{0,}/', $html, $matches);
   if ($result == FALSE || $result == 0) {
     consoleLog("Could not find JSON data for images");
     stop();
   }
-  $json = substr($matches[0], strpos($matches[0], "{"));
+  $json = substr($matches[0], strpos($matches[0], "["));
 
   //Getting title
   consoleLog("Getting name of chapter...");
-  $result = preg_match('/selected="true">[^<\/]{0,}/', $html, $matches);
+  $result = preg_match('/title>[^<\/]{0,}/', $html, $matches);
   if ($result == FALSE || $result == 0) {
     consoleLog("Could not find name of chapter in HTML.");
     stop();
@@ -101,26 +91,9 @@ function getData(&$html, &$json, &$dirName) {
 //Downloads image, creates filename
 function downloadImage(&$key, &$dirName, &$count, &$imageCount) {
   consoleLog("Downloading file ".($count+1)."/".$imageCount);
-  //trimming $key
-  $key = trim($key);
-  //creating name
+  $imageURL = trim("https:".$key);
   $saveTo = sprintf("%03d.jpg", $count);
-  //opening file
-  $fp = fopen($dirName."/".$saveTo, 'w+');
-  if($fp === false){
-    throw new Exception('Could not open: ' . $dirName."/".$saveTo);
-    stop();
-  }
-  //donwloading image to file
-  $ch = curl_init($key);
-  curl_setopt($ch, CURLOPT_FILE, $fp);
-  curl_setopt($ch, CURLOPT_TIMEOUT, 600);
-  curl_exec($ch);
-  if(curl_errno($ch)){
-    throw new Exception(curl_error($ch));
-    stop();
-  }
-  curl_close($ch);
+  file_put_contents($dirName."/".$saveTo, file_get_contents($imageURL));
   $count++;
 }
 
@@ -177,6 +150,14 @@ function checkURLForSeries(&$url) {
   return false;
 }
 
+//Checks if given URL is linking to chapter
+function checkURLForChapter(&$url) {
+  if (strpos($url, "/chapter/")) {
+    return true;
+  }
+  return false;
+}
+
 function isBatotoURL(&$url) {
   $res = preg_match('/bato.to\//', $url);
   if ($res === 1) {
@@ -188,23 +169,12 @@ function isBatotoURL(&$url) {
 
 //Downloads webpage to $html
 function downloadWebpage($url) {
-  //Checking of given URL is bato.to URL
   if (!isBatotoURL($url)) {
     consoleLog("Given URL is not linking to bato.to service.");
     stop();
   }
-  //setting up CURL to download webpage
-  $ch = curl_init($url);
-  setupCURL($ch);
   consoleLog("Downloading webpage $url");
-  //exexuting CURL
-  $html = curl_exec($ch);
-  if(curl_errno($ch)){
-      throw new Exception(curl_error($ch));
-      die();
-  }
-  $statusCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-  curl_close($ch);
+  $html = file_get_contents($url);
   return $html;
 }
 
@@ -215,7 +185,7 @@ function getChapterURL($id) {
 //Returns URL to first chapter of series
 function getFirstChapterURL($html) {
   $url = substr($html, strrpos($html, '<a class="chapt" href="/chapter/'));
-  $matches;
+  $matches = [];
   preg_match('/\/chapter\/[0-9]{1,}/', $url, $matches);
   $id = substr($matches[0], strrpos($matches[0], "/")+1);
   return getChapterURL($id);
@@ -231,6 +201,10 @@ function downloadChapter($url, &$options) {
     consoleLog("Given URL is a link to series page, downloading first chapter instead.");
     $url = getFirstChapterURL($html);
     $html = downloadWebpage($url);
+  }
+  if (!checkURLForChapter($url)) {
+	consoleLog("Given URL does not link to chapter.");
+	stop();
   }
   //Getting images URLs
   if ($html !== false) {
