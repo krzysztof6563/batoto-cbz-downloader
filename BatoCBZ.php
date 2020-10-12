@@ -125,7 +125,25 @@ function downloadImage($url, $dirName, &$count, $imageCount) {
   consoleLog("Downloading file ".($count+1)."/".$imageCount);
   $imageURL = trim("https:".$url);
   $saveTo = sprintf("%03d.jpg", $count);
-  file_put_contents($dirName."/".$saveTo, file_get_contents($imageURL));
+  $currentTry = 1;
+  $file = false;
+
+  while (false === $file && $currentTry <= 5) {
+      $file = @file_get_contents($imageURL);
+      if ($file === false) {
+        $time = $currentTry * 5;
+        consoleLog("There was a problem downloading $imageURL. Waiting $time seconds and retrying.");
+        sleep($time);
+        $currentTry++;
+      }
+  }
+
+  if (false !== $file) {
+    file_put_contents($dirName."/".$saveTo, $file);
+  } else {
+    consoleLog("!!! Image at $imageURL was not downloaded. !!!");
+  }
+
   $count++;
 }
 
