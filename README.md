@@ -1,12 +1,15 @@
 # batoto-cbz-downloader
-A small program to download chapters of manga from bato.to and convert it to .cbz.
+A program to download series and chapters of manga from bato.to and convert it to .cbz.
+You can pass URL to series or chapters. Has ability to download whole series or from specified chapter.
 
 Usage:
-php downloader.php URLs [options]
+./BatoCBZ.php URLs [options]
 
 # Options
---keep-files, -k - keeps downloaded files
+--keep-files, -k - keep downloaded files
 
---no-convert, -n - doesn't create .cbz archive
+--no-convert, -n - don't create .cbz archive
 
---till-last-chapter, -l - keeps downloading until the last chapter of series
+--untill-last-chapter, -l - keep downloading until the last chapter of series
+
+--skip-download, -s - skip downloading invidual images
